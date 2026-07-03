@@ -46,6 +46,7 @@ func (s *Serverpool) AddBackend(targetURL string) error {
 	}
 	s.backends = append(s.backends, &Backend{
 		URL:          purl,
+		Alive:        true,
 		ReverseProxy: p,
 	})
 	return nil
@@ -76,6 +77,11 @@ func (s *Serverpool) Nextavl() *Backend {
 	return nil
 }
 func (s *Serverpool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	//for testing
+	// if r.URL.Path == "/panic" {
+	// 	panic("PANICCCC")
+	// }
+	//....working(tested)
 	peer := s.Nextavl()
 	if peer != nil {
 		peer.ReverseProxy.ServeHTTP(w, r)
