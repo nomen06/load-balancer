@@ -1,0 +1,57 @@
+package balancer
+
+import (
+	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"sync/atomic"
+
+	"github.com/nomen06/load-balancer/internal/proxy"
+)
+
+// using atomic here because it is much much faster for simple increment operatons rather than using mutexes
+type Backend struct {
+	URL          *url.URL
+	ReverseProxy *httputil.ReverseProxy
+}
+
+type Serverpool struct {
+	backends []*Backend
+	current  uint64
+}
+
+func (s *Serverpool) AddBackend(targetURL string) error {
+	purl, err := url.Parse(targetURL)
+	if err != nil {
+		return err
+	}
+	p, err := proxy.NewProxy(targetURL)
+	if err != nil {
+		return err
+	}
+	s.backends = append(s.backends, &Backend{
+		URL:          purl,
+		ReverseProxy: p,
+	})
+	return nil
+}
+
+func (s *Serverpool) NextInd() int {
+	return int(atomic.AddUint64(&s.current, uint64(1)) % uint64(len(s.backends)))
+}
+
+func (s *Serverpool) Nextavl() *Backend {
+	if len(s.backends) == 0 {
+		return nil
+	}
+	next := s.NextInd()
+	return s.backends[next]
+}
+func (s *Serverpool) Httpserve(w http.ResponseWriter, r *http.Request) {
+	peer := s.Nextavl()
+	if peer != nil {
+		peer.ReverseProxy.ServeHTTP(w, r)
+		return
+	}
+	http.Error(w, "503", http.StatusServiceUnavailable)
+}
