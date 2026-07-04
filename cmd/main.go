@@ -1,11 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/nomen06/load-balancer/internal/balancer"
+	"github.com/nomen06/load-balancer/internal/config"
 	"github.com/nomen06/load-balancer/internal/middleware"
 )
 
@@ -22,13 +24,18 @@ func main() {
 	// }
 
 	//connecting for multiple backends
-	serverpool := &balancer.Serverpool{}
-	servers := []string{
-		"http://localhost:8081",
-		"http://localhost:8082",
-		"http://localhost:8083",
+	cfg, err := config.LoadConfig("configs/config.yaml")
+	if err != nil {
+		log.Fatalf("Failed to load config: %v,err")
 	}
-	for _, srv := range servers {
+
+	serverpool := &balancer.Serverpool{}
+	// servers := []string{
+	// 	"http://localhost:8081",
+	// 	"http://localhost:8082",
+	// 	"http://localhost:8083",
+	// }
+	for _, srv := range cfg.Servers {
 		if err := serverpool.AddBackend(srv); err != nil {
 			log.Fatalf("Could not parse backend URL : %v", err)
 		}
@@ -38,9 +45,10 @@ func main() {
 	var handler http.Handler = serverpool
 	handler = middleware.Logging(handler)
 	handler = middleware.Recovery(handler)
+
 	http.Handle("/", handler) //yaayyyy testing time now
 
-	log.Println("Load balancer running on : 8080")
+	// log.Println("Load balancer running on : 8080")
 	go func() {
 		t := time.NewTicker(10 * time.Second)
 		for range t.C {
@@ -48,6 +56,9 @@ func main() {
 			serverpool.Healthcheck()
 		}
 	}()
+	serverAddr := fmt.Sprintf(":%d", cfg.Port)
+	log.Printf("Load balancer running on %s", serverAddr)
+
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
