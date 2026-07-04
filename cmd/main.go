@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/nomen06/load-balancer/internal/balancer"
@@ -26,7 +30,7 @@ func main() {
 	//connecting for multiple backends
 	cfg, err := config.LoadConfig("configs/config.yaml")
 	if err != nil {
-		log.Fatalf("Failed to load config: %v,err")
+		log.Fatalf("Failed to load config: %v", err)
 	}
 
 	serverpool := &balancer.Serverpool{}
@@ -57,9 +61,35 @@ func main() {
 		}
 	}()
 	serverAddr := fmt.Sprintf(":%d", cfg.Port)
-	log.Printf("Load balancer running on %s", serverAddr)
-
-	if err := http.ListenAndServe(":8080", nil); err != nil {
-		log.Fatalf("Server failed: %v", err)
+	srv := &http.Server{
+		Addr:    serverAddr,
+		Handler: handler,
 	}
+	go func() {
+		log.Printf("Load balaner running on %s", serverAddr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server failed to start: %v", err)
+		}
+	}()
+	// log.Printf("Load balancer running on %s", serverAddr)
+
+	// if err := http.ListenAndServe(":8080", nil); err != nil {
+	// 	log.Fatalf("Server failed: %v", err)
+	// }
+
+	// channel listening to signal terminations
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
+	<-quit
+	log.Println("Termination signal recieved. Server shutting down gracefully..")
+
+	// giving a deadline context
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("server forced to shutdown: %v", err)
+	}
+	log.Println("Server exited cleanly.")
 }
