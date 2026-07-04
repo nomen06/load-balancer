@@ -74,11 +74,3 @@ Then
 curl http://localhost:8080
 ```
 
----
-
-## Future Improvements
-
-- Docker
-- AWS EC2 Deployment
-- HTTPS Support
-- Metrics Dashboard
